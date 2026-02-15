@@ -1,0 +1,1218 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Water Work Orders · City Sync</title>
+
+  <!-- Leaflet & plugins -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.0/papaparse.min.js"></script>
+  
+  <!-- Font Awesome -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  
+  <!-- Chart.js & datalabels -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-datalabels@2.0.0"></script>
+
+  <style>
+    /* ----- root & theme variables ----- */
+    :root {
+      --primary-blue: #0066cc;
+      --primary-blue-dark: #0052a3;
+      --primary-blue-light: #3385d6;
+      --accent-teal: #00b4d8;
+      --accent-teal-light: #48cae4;
+      --success-green: #00b894;
+      --warning-orange: #f39c12;
+      --danger-red: #e74c3c;
+      --critical-dark: #c0392b;
+      --neutral-gray: #6c757d;
+      --light-gray: #f8f9fa;
+      --dark-gray: #343a40;
+      --white: #ffffff;
+      --shadow-light: rgba(0, 102, 204, 0.1);
+      --shadow-medium: rgba(0, 0, 0, 0.08);
+      --shadow-dark: rgba(0, 0, 0, 0.12);
+      --gradient-primary: linear-gradient(135deg, var(--primary-blue) 0%, var(--accent-teal) 100%);
+      --gradient-success: linear-gradient(135deg, var(--success-green) 0%, #00d2a0 100%);
+      --gradient-warning: linear-gradient(135deg, var(--warning-orange) 0%, #f5b041 100%);
+      --gradient-danger: linear-gradient(135deg, var(--danger-red) 0%, #ff6b6b 100%);
+      --border-radius-sm: 8px;
+      --border-radius-md: 12px;
+      --border-radius-lg: 16px;
+      --border-radius-xl: 20px;
+      --transition-fast: 0.2s ease;
+      --transition-medium: 0.3s ease;
+      
+      /* theme variables (light) */
+      --theme-bg: #f5f7fa;
+      --theme-panel-bg: #ffffff;
+      --theme-panel-border: #e0e0e0;
+      --theme-panel-shadow: 5px 0 25px rgba(0, 0, 0, 0.1);
+      --theme-text: #343a40;
+      --theme-card-bg: #ffffff;
+      --theme-card-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+      --theme-input-bg: #ffffff;
+      --theme-input-border: #e9ecef;
+      --theme-input-text: #343a40;
+      --theme-section-bg: #f8f9fa;
+      --theme-section-border: #e9ecef;
+      --theme-header-bg: #ffffff;
+      --theme-header-border: #dee2e6;
+      --theme-map-controls-bg: #ffffff;
+      --theme-map-controls-border: #e0e0e0;
+      --theme-map-controls-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
+      --theme-zoom-bg: #ffffff;
+      --theme-zoom-shadow: 0 5px 15px rgba(0, 0, 0, 0.08);
+      --theme-chart-bg: #ffffff;
+      --theme-chart-border: #e9ecef;
+      --theme-chart-shadow: 0 10px 40px rgba(0, 102, 204, 0.15);
+      --theme-scrollbar-track: #f1f1f1;
+      --theme-scrollbar-thumb: #c1c1c1;
+    }
+
+    body.dark-theme {
+      --theme-bg: #0d1117;
+      --theme-panel-bg: #161b22;
+      --theme-panel-border: #30363d;
+      --theme-panel-shadow: 5px 0 25px rgba(0, 0, 0, 0.4);
+      --theme-text: #e6edf3;
+      --theme-card-bg: #161b22;
+      --theme-card-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+      --theme-input-bg: #0d1117;
+      --theme-input-border: #30363d;
+      --theme-input-text: #e6edf3;
+      --theme-section-bg: #161b22;
+      --theme-section-border: #30363d;
+      --theme-header-bg: #161b22;
+      --theme-header-border: #30363d;
+      --theme-map-controls-bg: #161b22;
+      --theme-map-controls-border: #30363d;
+      --theme-map-controls-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+      --theme-zoom-bg: #161b22;
+      --theme-zoom-shadow: 0 5px 15px rgba(0, 0, 0, 0.3);
+      --theme-chart-bg: #161b22;
+      --theme-chart-border: #30363d;
+      --theme-chart-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+      --theme-scrollbar-track: #0d1117;
+      --theme-scrollbar-thumb: #30363d;
+    }
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      font-family: 'Segoe UI', 'Inter', sans-serif;
+      background: var(--theme-bg);
+      overflow: hidden;
+      color: var(--theme-text);
+      height: 100vh;
+      display: flex;
+      transition: background var(--transition-medium), color var(--transition-medium);
+    }
+
+    #map { flex: 1; height: 100vh; z-index: 1; }
+
+    /* left panel container - increased width for better chart readability */
+    .panels-container {
+      display: flex;
+      flex-direction: column;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 400px;  /* was 350px – more room for horizontal bar chart */
+      height: 100vh;
+      z-index: 2000;
+      pointer-events: none;
+    }
+
+    .control-panel {
+      background: var(--theme-panel-bg);
+      border-right: 1px solid var(--theme-panel-border);
+      box-shadow: var(--theme-panel-shadow);
+      height: 100vh;
+      width: 400px;  /* consistent with container */
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      pointer-events: auto;
+      transition: transform 0.3s ease, background var(--transition-medium), border-color var(--transition-medium);
+    }
+
+    .control-panel.hidden { transform: translateX(-100%); }
+
+    .panel-header {
+      padding: 15px 20px;
+      border-bottom: 1px solid var(--theme-header-border);
+      background: var(--theme-header-bg);
+      flex-shrink: 0;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .panel-header h2 {
+      color: var(--theme-text);
+      font-size: 1.2em;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .panel-header h2 i { color: var(--accent-teal); }
+
+    .close-panel {
+      background: none;
+      border: none;
+      font-size: 22px;
+      color: var(--neutral-gray);
+      cursor: pointer;
+      padding: 6px;
+      border-radius: var(--border-radius-sm);
+      transition: all var(--transition-fast);
+      width: 36px; height: 36px;
+      display: flex; align-items: center; justify-content: center;
+    }
+
+    .close-panel:hover {
+      color: var(--danger-red);
+      background: rgba(231, 76, 60, 0.1);
+      transform: rotate(90deg);
+    }
+
+    .dashboard-content {
+      flex: 1;
+      overflow-y: auto;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* filters section (only city) */
+    .filters-section {
+      background: var(--theme-section-bg);
+      padding: 20px;
+      border-radius: var(--border-radius-lg);
+      border: 1px solid var(--theme-section-border);
+      flex-shrink: 0;
+    }
+
+    .filters-section h3 {
+      color: var(--theme-text);
+      margin-bottom: 20px;
+      font-size: 1.1em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+    }
+
+    .filter-group {
+      margin-bottom: 0;
+    }
+
+    .filter-group label {
+      display: block;
+      margin-bottom: 8px;
+      color: var(--theme-text);
+      font-weight: 600;
+      font-size: 0.9em;
+    }
+
+    .filter-group select {
+      width: 100%;
+      padding: 10px 12px;
+      border: 2px solid var(--theme-input-border);
+      border-radius: var(--border-radius-md);
+      background: var(--theme-input-bg);
+      color: var(--theme-input-text);
+      font-size: 14px;
+      transition: all var(--transition-fast);
+      font-weight: 500;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%230066cc' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      background-size: 10px;
+      padding-right: 30px;
+    }
+
+    body.dark-theme .filter-group select {
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='%2300b4d8' viewBox='0 0 16 16'%3E%3Cpath d='M7.247 11.14 2.451 5.658C1.885 5.013 2.345 4 3.204 4h9.592a1 1 0 0 1 .753 1.659l-4.796 5.48a1 1 0 0 1-1.506 0z'/%3E%3C/svg%3E");
+    }
+
+    /* ===== ENHANCED CHART SECTION – now expands to fill available space ===== */
+    .chart-section {
+      background: var(--theme-section-bg);
+      padding: 20px;
+      border-radius: var(--border-radius-lg);
+      border: 1px solid var(--theme-section-border);
+      display: flex;
+      flex-direction: column;
+      flex: 1;  /* take remaining vertical space */
+      min-height: 0;  /* flex overflow control */
+    }
+
+    .chart-section h3 {
+      color: var(--theme-text);
+      margin-bottom: 16px;
+      font-size: 1.1em;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 700;
+      flex-shrink: 0;
+    }
+
+    .chart-container {
+      width: 100%;
+      flex: 1;  /* fill the section */
+      min-height: 0;  /* important for nested flex */
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      background: var(--theme-chart-bg);
+      border-radius: var(--border-radius-lg);
+      padding: 12px 8px 8px 8px;  /* slightly reduced horizontal padding */
+      box-shadow: 0 20px 35px -8px rgba(0, 102, 204, 0.25);
+      transition: box-shadow 0.3s ease, background 0.3s ease;
+      border: 1px solid var(--theme-chart-border);
+    }
+
+    body.dark-theme .chart-container {
+      box-shadow: 0 20px 35px -8px rgba(0, 180, 216, 0.2);
+    }
+
+    #workOrderChart {
+      width: 100% !important;
+      height: 100% !important;  /* fills flex container */
+      max-height: none;
+      transition: all 0.3s ease;
+    }
+
+    /* dashboard toggle (left) – adjusted slightly for wider panel */
+    .dashboard-toggle {
+      position: fixed;
+      top: 20px;
+      left: 20px;
+      z-index: 999;
+      background: var(--gradient-primary);
+      color: white;
+      width: 50px;
+      height: 50px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      cursor: pointer;
+      box-shadow: 0 8px 25px rgba(0, 102, 204, 0.3);
+      transition: all var(--transition-medium);
+      border: 3px solid white;
+      pointer-events: auto;
+    }
+
+    .dashboard-toggle:hover {
+      transform: scale(1.1) rotate(15deg);
+      box-shadow: 0 12px 30px rgba(0, 102, 204, 0.4);
+    }
+
+    /* site name display */
+    .site-name-display {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 1000;
+      pointer-events: none;
+      max-width: 500px;
+      width: auto;
+      text-align: center;
+    }
+
+    .site-name-container {
+      background: var(--theme-card-bg);
+      color: var(--theme-text);
+      padding: 12px 30px;
+      border-radius: var(--border-radius-xl);
+      box-shadow: var(--theme-card-shadow);
+      border: 1px solid var(--theme-section-border);
+      min-width: 300px;
+      opacity: 0;
+      transition: all var(--transition-medium);
+      transform: translateY(-20px);
+      pointer-events: auto;
+    }
+
+    .site-name-container.visible {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    /* bottom panel (map view + city tour) */
+    .bottom-panel {
+      position: fixed;
+      bottom: 0;
+      left: 50%;
+      transform: translateX(-50%);
+      width: 700px;
+      max-width: 90%;
+      background: var(--theme-map-controls-bg);
+      border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0;
+      box-shadow: var(--theme-map-controls-shadow);
+      border: 1px solid var(--theme-map-controls-border);
+      border-bottom: none;
+      z-index: 1000;
+      overflow: hidden;
+      pointer-events: auto;
+    }
+
+    .bottom-panel-tabs {
+      display: flex;
+      background: var(--theme-section-bg);
+      border-bottom: 1px solid var(--theme-section-border);
+      padding: 0;
+    }
+
+    .bottom-panel-tab {
+      flex: 1;
+      padding: 12px 20px;
+      background: none;
+      border: none;
+      color: var(--theme-text);
+      font-weight: 600;
+      font-size: 0.9em;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      border-bottom: 3px solid transparent;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .bottom-panel-tab:hover { background: var(--theme-input-bg); }
+    .bottom-panel-tab.active {
+      color: var(--primary-blue);
+      border-bottom-color: var(--primary-blue);
+      background: var(--theme-panel-bg);
+    }
+
+    .bottom-panel-content { padding: 15px 20px; }
+    .tab-content { display: none; animation: fadeIn 0.3s ease; }
+    .tab-content.active { display: block; }
+    @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+    .map-view-content {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 15px;
+    }
+
+    .map-view-left { display: flex; align-items: center; gap: 15px; }
+    .map-view-right { display: flex; align-items: center; gap: 10px; }
+    .map-view-content h4 {
+      font-size: 0.9em;
+      color: var(--theme-text);
+      margin: 0;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .layer-options { display: flex; gap: 5px; }
+    .layer-option {
+      padding: 8px 16px;
+      background: var(--theme-section-bg);
+      border: 1px solid var(--theme-input-border);
+      border-radius: var(--border-radius-md);
+      cursor: pointer;
+      font-size: 0.85em;
+      font-weight: 600;
+      color: var(--theme-text);
+      transition: all var(--transition-fast);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .layer-option:hover {
+      background: var(--theme-input-bg);
+      border-color: var(--primary-blue-light);
+    }
+
+    .layer-option.active {
+      background: var(--primary-blue);
+      color: white;
+      border-color: var(--primary-blue);
+      box-shadow: 0 4px 12px rgba(0, 102, 204, 0.2);
+    }
+
+    .theme-toggle {
+      padding: 8px 16px;
+      background: var(--theme-section-bg);
+      border: 1px solid var(--theme-input-border);
+      border-radius: var(--border-radius-md);
+      cursor: pointer;
+      font-size: 0.85em;
+      font-weight: 600;
+      color: var(--theme-text);
+      transition: all var(--transition-fast);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+    }
+
+    .theme-toggle:hover {
+      background: var(--theme-input-bg);
+      border-color: var(--primary-blue-light);
+      transform: translateY(-1px);
+    }
+
+    /* city tour controls */
+    .city-tour-content { display: flex; flex-direction: column; gap: 15px; }
+    .city-tour-header h4 {
+      font-size: 0.95em;
+      color: var(--theme-text);
+      margin: 0;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .city-tour-controls {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 15px;
+    }
+
+    .city-tour-buttons { display: flex; gap: 10px; }
+    .tour-button {
+      padding: 10px 20px;
+      background: var(--primary-blue);
+      color: white;
+      border: none;
+      border-radius: var(--border-radius-md);
+      font-weight: 600;
+      font-size: 0.9em;
+      cursor: pointer;
+      transition: all var(--transition-fast);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 100px;
+    }
+
+    .tour-button:hover {
+      background: var(--primary-blue-dark);
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(0, 102, 204, 0.2);
+    }
+
+    .tour-button:disabled {
+      background: var(--neutral-gray);
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+      opacity: 0.6;
+    }
+
+    .tour-button.play { background: var(--success-green); }
+    .tour-button.pause { background: var(--warning-orange); }
+    .tour-button.stop { background: var(--danger-red); }
+
+    .tour-speed-control {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 200px;
+    }
+
+    .tour-speed-control label {
+      font-size: 0.85em;
+      color: var(--theme-text);
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    .tour-speed-slider {
+      flex: 1;
+      -webkit-appearance: none;
+      appearance: none;
+      height: 6px;
+      background: var(--theme-input-bg);
+      border-radius: 3px;
+      outline: none;
+    }
+
+    .tour-speed-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 18px;
+      height: 18px;
+      background: var(--primary-blue);
+      border-radius: 50%;
+      cursor: pointer;
+      border: 2px solid white;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    }
+
+    .tour-speed-value {
+      font-size: 0.85em;
+      color: var(--primary-blue);
+      font-weight: 700;
+      min-width: 40px;
+      text-align: right;
+    }
+
+    /* zoom & scale indicators */
+    .zoom-level {
+      position: fixed;
+      bottom: 90px;
+      right: 20px;
+      z-index: 1000;
+      background: var(--theme-zoom-bg);
+      padding: 8px 16px;
+      border-radius: var(--border-radius-md);
+      box-shadow: var(--theme-zoom-shadow);
+      font-weight: 600;
+      color: var(--primary-blue);
+      font-size: 0.9em;
+      pointer-events: auto;
+      border: 1px solid var(--theme-section-border);
+    }
+
+    .scale-indicator {
+      position: fixed;
+      bottom: 90px;
+      left: 20px;
+      z-index: 1000;
+      background: var(--theme-zoom-bg);
+      padding: 8px 16px;
+      border-radius: var(--border-radius-md);
+      box-shadow: var(--theme-zoom-shadow);
+      font-weight: 600;
+      color: var(--primary-blue);
+      font-size: 0.9em;
+      pointer-events: auto;
+      min-width: 160px;
+      border: 1px solid var(--theme-section-border);
+    }
+
+    /* cluster & marker styles */
+    .custom-cluster {
+      background: #0066cc;
+      border: 2px solid white;
+      border-radius: 50%;
+      box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+      color: white;
+      font-weight: 800;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
+    }
+
+    .city-marker {
+      background: #0066cc;
+      border: 2px solid white;
+      border-radius: 50%;
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.15);
+    }
+
+    ::-webkit-scrollbar { width: 4px; height: 4px; }
+    ::-webkit-scrollbar-track { background: var(--theme-scrollbar-track); }
+    ::-webkit-scrollbar-thumb { background: var(--theme-scrollbar-thumb); border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--primary-blue); }
+  </style>
+</head>
+<body>
+
+<div id="map"></div>
+
+<!-- Left Panel (filter + chart) - wider now -->
+<div class="panels-container">
+  <div class="control-panel" id="controlPanel">
+    <div class="panel-header">
+      <h2><i class="fas fa-clipboard-list"></i> Water Work Orders</h2>
+      <button class="close-panel" onclick="toggleDashboard()">×</button>
+    </div>
+
+    <div class="dashboard-content">
+      <!-- Filters Section (only city) -->
+      <div class="filters-section">
+        <h3><i class="fas fa-filter"></i> City</h3>
+        <div class="filter-group">
+          <label for="cityFilter"><i class="fas fa-city"></i> Select city</label>
+          <select id="cityFilter" onchange="onCityFilterManualChange()">
+            <option value="all">All Cities</option>
+          </select>
+        </div>
+      </div>
+
+      <!-- Chart Section - now expands vertically -->
+      <div class="chart-section">
+        <h3><i class="fas fa-chart-bar"></i> Monthly work orders</h3>
+        <div class="chart-container">
+          <canvas id="workOrderChart"></canvas>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Dashboard Toggle Button -->
+<div class="dashboard-toggle" id="dashboardToggle" onclick="toggleDashboard()">
+  <i class="fas fa-chart-line"></i>
+</div>
+
+<!-- Site Name Display (kept for compatibility) -->
+<div class="site-name-display" id="siteNameDisplay">
+  <div class="site-name-container" id="siteNameContainer">
+    <h2><i class="fas fa-map-marker-alt"></i> <span id="currentSiteName">All Cities</span></h2>
+    <div class="site-count" id="siteCount"></div>
+  </div>
+</div>
+
+<!-- Bottom Panel (Map View & City Tour only) -->
+<div class="bottom-panel" id="bottomPanel">
+  <div class="bottom-panel-tabs">
+    <button class="bottom-panel-tab active" id="mapViewTab" onclick="switchBottomTab('mapView')">
+      <i class="fas fa-layer-group"></i> Map View
+    </button>
+    <button class="bottom-panel-tab" id="cityTourTab" onclick="switchBottomTab('cityTour')">
+      <i class="fas fa-map-marked-alt"></i> City Tour Animation
+    </button>
+  </div>
+  
+  <div class="bottom-panel-content">
+    <!-- Map View Tab Content -->
+    <div id="mapViewContent" class="tab-content active">
+      <div class="map-view-content">
+        <div class="map-view-left">
+          <h4><i class="fas fa-layer-group"></i> Map View</h4>
+          <div class="layer-options">
+            <div class="layer-option active" onclick="changeMapLayer('street')">
+              <i class="fas fa-road"></i> Street
+            </div>
+            <div class="layer-option" onclick="changeMapLayer('imagery')">
+              <i class="fas fa-satellite"></i> Imagery
+            </div>
+            <div class="layer-option" onclick="changeMapLayer('hybrid')">
+              <i class="fas fa-map"></i> Hybrid
+            </div>
+          </div>
+        </div>
+        <div class="map-view-right">
+          <div class="theme-toggle" id="themeToggle" onclick="toggleTheme()">
+            <i class="fas fa-moon"></i> <span>Dark Theme</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- City Tour Animation Tab Content -->
+    <div id="cityTourContent" class="tab-content">
+      <div class="city-tour-content">
+        <div class="city-tour-header">
+          <h4><i class="fas fa-map-marked-alt"></i> City Tour Animation</h4>
+        </div>
+        
+        <div class="city-tour-controls">
+          <div class="city-tour-buttons">
+            <button class="tour-button play" id="playTourBtn" onclick="startCityTour()">
+              <i class="fas fa-play"></i> <span>Start Tour</span>
+            </button>
+            <button class="tour-button pause" id="pauseTourBtn" onclick="pauseCityTour()" disabled>
+              <i class="fas fa-pause"></i> <span>Pause</span>
+            </button>
+            <button class="tour-button stop" id="stopTourBtn" onclick="stopCityTour()" disabled>
+              <i class="fas fa-stop"></i> <span>Stop</span>
+            </button>
+          </div>
+          
+          <div class="tour-speed-control">
+            <label for="tourSpeed"><i class="fas fa-tachometer-alt"></i> Speed:</label>
+            <input type="range" min="1000" max="10000" value="4000" step="1000" class="tour-speed-slider" id="tourSpeed" oninput="updateTourSpeed()">
+            <span class="tour-speed-value" id="tourSpeedValue">4s</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Scale & Zoom Indicators -->
+<div class="scale-indicator" id="scaleIndicator">Scale: 1:<span id="currentScale">100,000</span></div>
+<div class="zoom-level" id="zoomLevel">Zoom Level: <span id="currentZoom">13</span></div>
+
+<!-- Scripts -->
+<script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/leaflet.heat/dist/leaflet-heat.js"></script>
+
+<script>
+  // ===========================================
+  // GLOBALS
+  // ===========================================
+  let map;
+  let markerCluster;
+  let workOrders = [];
+  let cities = [];
+  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+  let workOrderChart = null;
+  
+  const cityCoordinates = {
+    'AL AIS': { lat: 25.06798, lng: 38.12393 },
+    'AL HENAKIYAH': { lat: 24.885571, lng: 40.520608 },
+    'AL MADINAH': { lat: 24.46948, lng: 39.61090 },
+    'AL MAHD': { lat: 23.49765, lng: 40.87637 },
+    'AL ULA': { lat: 26.58120, lng: 37.95454 },
+    'BADR': { lat: 23.79030, lng: 38.78112 },
+    'KHAYBAR': { lat: 25.68919, lng: 39.29349 },
+    'WADI AL FARA': { lat: 23.628511, lng: 39.812051 },
+    'YANBU': { lat: 24.094483, lng: 38.054870 }
+  };
+
+  // Map state
+  let currentMapLayer = 'street';
+  let mapLayers = {};
+  let isDarkTheme = false;
+  let currentZoom = 13;
+  
+  // City Tour
+  let cityTourInterval = null;
+  let currentTourCityIndex = -1;
+  let tourCities = [];
+  let tourIsPlaying = false;
+  let tourSpeed = 4000;
+  let tourData = {};
+
+  // ===========================================
+  // INIT
+  // ===========================================
+  function initMap() {
+    map = L.map('map').setView([24.50, 39.65], 13);
+    
+    mapLayers = {
+      street: L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }),
+      imagery: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: '© Esri' }),
+      hybrid: L.tileLayer('https://{s}.google.com/vt/lyrs=s,h&x={x}&y={y}&z={z}', { maxZoom: 20, subdomains: ['mt0','mt1','mt2','mt3'], attribution: '© Google' })
+    };
+    mapLayers.street.addTo(map);
+    
+    markerCluster = L.markerClusterGroup({
+      maxClusterRadius: 30,
+      spiderfyOnMaxZoom: true,
+      showCoverageOnHover: true,
+      zoomToBoundsOnClick: true,
+      disableClusteringAtZoom: 15,
+      iconCreateFunction: function(cluster) {
+        const count = cluster.getChildCount();
+        let size = count < 5 ? 24 : (count < 10 ? 28 : 32);
+        return L.divIcon({
+          html: `<div class="custom-cluster" style="width:${size}px;height:${size}px;">${count}</div>`,
+          className: '', iconSize: [size, size], iconAnchor: [size/2, size/2]
+        });
+      }
+    });
+    
+    map.on('zoomend', function() {
+      currentZoom = map.getZoom();
+      document.getElementById('currentZoom').textContent = currentZoom;
+      updateScaleIndicator();
+    });
+    map.on('moveend', updateScaleIndicator);
+    updateScaleIndicator();
+  }
+
+  function updateScaleIndicator() {
+    const center = map.getCenter();
+    const zoom = map.getZoom();
+    const worldCircumference = 40075016.686;
+    const metersPerPixel = worldCircumference * Math.cos(center.lat * Math.PI/180) / (256 * Math.pow(2, zoom));
+    let scale = metersPerPixel < 1 ? Math.round(1/metersPerPixel) : Math.round(metersPerPixel);
+    document.getElementById('currentScale').textContent = scale.toLocaleString();
+  }
+
+  // ===========================================
+  // DATA LOADING
+  // ===========================================
+  function loadWorkOrdersCSV() {
+    Papa.parse('waterworkorders.csv', {
+      download: true,
+      header: true,
+      dynamicTyping: true,
+      skipEmptyLines: true,
+      complete: function(results) {
+        if (results.errors.length) {
+          console.warn('CSV errors, using sample data');
+          createSampleData();
+          return;
+        }
+        workOrders = results.data.map(row => ({
+          city: row.City,
+          Jan: row.Jan || 0, Feb: row.Feb || 0, Mar: row.Mar || 0, Apr: row.Apr || 0,
+          May: row.May || 0, Jun: row.Jun || 0, Jul: row.Jul || 0, Aug: row.Aug || 0,
+          Sep: row.Sep || 0, Oct: row.Oct || 0, Nov: row.Nov || 0, Dec: row.Dec || 0,
+          Total: row.Total || 0
+        }));
+        cities = workOrders.map(d => d.city).sort();
+        populateCityFilter();
+        createCityMarkers();
+        initCityTour();
+        updateChart(); // initial chart (all cities)
+      },
+      error: function() { createSampleData(); }
+    });
+  }
+
+  function createSampleData() {
+    workOrders = [
+      { city:'YANBU', Jan:304, Feb:163, Mar:693, Apr:365, May:111, Jun:566, Jul:299, Aug:376, Sep:625, Oct:474, Nov:269, Dec:415, Total:4660 },
+      { city:'AL AIS', Jan:361, Feb:419, Mar:56, Apr:344, May:294, Jun:56, Jul:310, Aug:353, Sep:134, Oct:251, Nov:356, Dec:85, Total:3019 },
+      { city:'BADR', Jan:206, Feb:35, Mar:35, Apr:240, May:32, Jun:33, Jul:211, Aug:36, Sep:31, Oct:354, Nov:38, Dec:29, Total:1280 },
+      { city:'AL ULA', Jan:497, Feb:289, Mar:383, Apr:521, May:160, Jun:346, Jul:484, Aug:301, Sep:391, Oct:642, Nov:280, Dec:399, Total:4693 },
+      { city:'AL MADINAH', Jan:804, Feb:557, Mar:456, Apr:663, May:647, Jun:707, Jul:705, Aug:554, Sep:481, Oct:849, Nov:704, Dec:540, Total:7667 },
+      { city:'AL HENAKIYAH', Jan:701, Feb:222, Mar:110, Apr:530, May:73, Jun:123, Jul:653, Aug:97, Sep:157, Oct:532, Nov:67, Dec:224, Total:3489 },
+      { city:'AL MAHD', Jan:311, Feb:115, Mar:203, Apr:341, May:81, Jun:255, Jul:270, Aug:86, Sep:209, Oct:342, Nov:137, Dec:69, Total:2419 },
+      { city:'WADI AL FARA', Jan:90, Feb:185, Mar:195, Apr:77, May:67, Jun:218, Jul:77, Aug:106, Sep:195, Oct:77, Nov:81, Dec:268, Total:1636 },
+      { city:'KHAYBAR', Jan:269, Feb:109, Mar:209, Apr:143, May:68, Jun:238, Jul:166, Aug:142, Sep:223, Oct:145, Nov:117, Dec:241, Total:2070 }
+    ];
+    cities = workOrders.map(d => d.city).sort();
+    populateCityFilter();
+    createCityMarkers();
+    initCityTour();
+    updateChart();
+  }
+
+  function populateCityFilter() {
+    const citySelect = document.getElementById('cityFilter');
+    citySelect.innerHTML = '<option value="all">All Cities</option>';
+    cities.forEach(city => {
+      const option = document.createElement('option');
+      option.value = city;
+      option.textContent = city;
+      citySelect.appendChild(option);
+    });
+  }
+
+  // ===========================================
+  // CHART (with datalabels showing values on bars)
+  // ===========================================
+  function updateChart() {
+    const selectedCity = document.getElementById('cityFilter').value;
+    let chartData = months.map(month => {
+      if (selectedCity === 'all') {
+        return workOrders.reduce((sum, row) => sum + (row[month] || 0), 0);
+      } else {
+        const cityData = workOrders.find(d => d.city === selectedCity);
+        return cityData ? cityData[month] : 0;
+      }
+    });
+
+    renderChart(months, chartData);
+  }
+
+  // ⬇️ renderChart WITH DATALABELS ENABLED ⬇️
+  function renderChart(labels, data) {
+    const ctx = document.getElementById('workOrderChart').getContext('2d');
+    if (workOrderChart) workOrderChart.destroy();
+
+    // Create gradient
+    const gradient = ctx.createLinearGradient(0, 0, 400, 0);
+    if (isDarkTheme) {
+      gradient.addColorStop(0, '#00b4d8');
+      gradient.addColorStop(1, '#48cae4');
+    } else {
+      gradient.addColorStop(0, '#0066cc');
+      gradient.addColorStop(1, '#00b4d8');
+    }
+
+    // Register the datalabels plugin (if not already registered)
+    if (typeof ChartDataLabels !== 'undefined') {
+      Chart.register(ChartDataLabels);
+    }
+
+    workOrderChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: labels,
+        datasets: [{
+          label: 'Work Orders',
+          data: data,
+          backgroundColor: gradient,
+          hoverBackgroundColor: '#90e0ef',
+          borderRadius: 12,
+          barThickness: 18
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,   // IMPORTANT: fills full vertical space
+        animation: {
+          duration: 1000,
+          easing: 'easeOutCubic'
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: isDarkTheme ? '#161b22' : '#222',
+            titleFont: { size: 14, weight: 'bold' },
+            bodyFont: { size: 13 },
+            padding: 12,
+            callbacks: {
+              label: (ctx) => ` ${ctx.raw.toLocaleString()} Work Orders`
+            }
+          },
+          // ⭐ DATALABELS configuration: show value on each bar
+          datalabels: {
+            anchor: 'end',            // position at the end of the bar
+            align: 'right',           // for horizontal bar, right side
+            offset: 4,                // small offset from bar end
+            color: isDarkTheme ? '#ffffff' : '#ffffff',
+            font: {
+              weight: 'bold',
+              size: 11
+            },
+            formatter: (value) => value.toLocaleString(), // format with commas
+            display: (context) => context.dataset.data[context.dataIndex] > 0 // only show if >0
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            grid: {
+              color: isDarkTheme ? '#30363d' : '#e6e6e6'
+            },
+            ticks: {
+              color: isDarkTheme ? '#e6edf3' : '#333',
+              font: {
+                size: 12,
+                weight: '600'
+              }
+            }
+          },
+          y: {
+            grid: { display: false },
+            ticks: {
+              color: isDarkTheme ? '#ffffff' : '#222',
+              font: {
+                size: 13,
+                weight: '700'
+              }
+            }
+          }
+        },
+        layout: {
+          padding: {
+            top: 10,
+            bottom: 10,
+            left: 10,
+            right: 15
+          }
+        }
+      }
+    });
+  }
+
+  // ===========================================
+  // MAP MARKERS
+  // ===========================================
+  function createCityMarkers() {
+    markerCluster.clearLayers();
+    workOrders.forEach(item => {
+      const city = item.city;
+      const coords = cityCoordinates[city];
+      if (!coords) return;
+      const marker = L.marker([coords.lat, coords.lng], {
+        icon: L.divIcon({
+          html: `<div class="city-marker" style="width:16px;height:16px;"></div>`,
+          className: '', iconSize: [16,16], iconAnchor: [8,8]
+        })
+      });
+      marker.bindPopup(`
+        <strong>${city}</strong><br>
+        Total: ${item.Total.toLocaleString()}<br>
+        <a href="#" onclick="filterCityFromMap('${city}'); return false;">Show in chart</a>
+      `);
+      markerCluster.addLayer(marker);
+    });
+    map.addLayer(markerCluster);
+  }
+
+  window.filterCityFromMap = function(city) {
+    document.getElementById('cityFilter').value = city;
+    onCityFilterManualChange(); // trigger sync
+  };
+
+  // ===========================================
+  // CITY TOUR (fully synchronized)
+  // ===========================================
+  function initCityTour() {
+    tourCities = cities.slice(); // use cities from data
+    tourData = {};
+    tourCities.forEach(city => {
+      const coords = cityCoordinates[city];
+      if (coords) tourData[city] = { center: [coords.lat, coords.lng] };
+    });
+    updateTourUI();
+  }
+
+  function startCityTour() {
+    if (tourIsPlaying) return;
+    if (tourCities.length === 0) return;
+    if (currentTourCityIndex >= tourCities.length - 1) currentTourCityIndex = -1;
+    tourIsPlaying = true;
+    updateTourButtons();
+    cityTourInterval = setInterval(nextCity, tourSpeed);
+    if (currentTourCityIndex < 0) nextCity(); // move to first city immediately
+  }
+
+  function pauseCityTour() {
+    tourIsPlaying = false;
+    if (cityTourInterval) clearInterval(cityTourInterval);
+    cityTourInterval = null;
+    updateTourButtons();
+  }
+
+  function stopCityTour() {
+    pauseCityTour();
+    currentTourCityIndex = -1;
+    map.setView([24.50, 39.65], 13);
+    updateTourButtons();
+  }
+
+  function nextCity() {
+    if (tourCities.length === 0) return;
+    currentTourCityIndex++;
+    if (currentTourCityIndex >= tourCities.length) currentTourCityIndex = 0;
+    const city = tourCities[currentTourCityIndex];
+    const coords = cityCoordinates[city];
+    if (coords) {
+      map.flyTo([coords.lat, coords.lng], 13, { duration: 1.2 });
+      // SYNCHRONIZATION: update filter and chart
+      document.getElementById('cityFilter').value = city;
+      updateChart();
+      document.getElementById('currentSiteName').textContent = city;
+    }
+  }
+
+  function updateTourButtons() {
+    const playBtn = document.getElementById('playTourBtn');
+    const pauseBtn = document.getElementById('pauseTourBtn');
+    const stopBtn = document.getElementById('stopTourBtn');
+    playBtn.disabled = tourIsPlaying || tourCities.length === 0;
+    pauseBtn.disabled = !tourIsPlaying;
+    stopBtn.disabled = currentTourCityIndex === -1;
+  }
+
+  function updateTourUI() { updateTourButtons(); }
+
+  function updateTourSpeed() {
+    const slider = document.getElementById('tourSpeed');
+    tourSpeed = parseInt(slider.value);
+    document.getElementById('tourSpeedValue').textContent = (tourSpeed/1000)+'s';
+    if (tourIsPlaying && cityTourInterval) {
+      clearInterval(cityTourInterval);
+      cityTourInterval = setInterval(nextCity, tourSpeed);
+    }
+  }
+
+  // ===========================================
+  // MANUAL FILTER CHANGE (sync chart & tour)
+  // ===========================================
+  function onCityFilterManualChange() {
+    const selected = document.getElementById('cityFilter').value;
+    updateChart();
+    document.getElementById('currentSiteName').textContent = selected === 'all' ? 'All Cities' : selected;
+
+    if (tourIsPlaying) {
+      pauseCityTour();
+    }
+    if (selected !== 'all') {
+      const coords = cityCoordinates[selected];
+      if (coords) map.flyTo([coords.lat, coords.lng], 13, { duration: 1 });
+      const idx = tourCities.indexOf(selected);
+      if (idx !== -1) currentTourCityIndex = idx;
+    } else {
+      map.flyTo([24.50, 39.65], 10, { duration: 1 });
+      currentTourCityIndex = -1;
+    }
+    updateTourButtons();
+  }
+
+  // ===========================================
+  // UI HELPERS
+  // ===========================================
+  function toggleTheme() {
+    const body = document.body;
+    const toggle = document.getElementById('themeToggle');
+    const icon = toggle.querySelector('i');
+    const span = toggle.querySelector('span');
+    isDarkTheme = !isDarkTheme;
+    body.classList.toggle('dark-theme', isDarkTheme);
+    icon.className = isDarkTheme ? 'fas fa-sun' : 'fas fa-moon';
+    span.textContent = isDarkTheme ? 'Light Theme' : 'Dark Theme';
+    localStorage.setItem('waterAssetsTheme', isDarkTheme ? 'dark' : 'light');
+    updateChart(); // re-render with new colors
+  }
+
+  function loadThemePreference() {
+    const saved = localStorage.getItem('waterAssetsTheme');
+    if (saved === 'dark') {
+      isDarkTheme = true;
+      document.body.classList.add('dark-theme');
+      document.getElementById('themeToggle').querySelector('i').className = 'fas fa-sun';
+      document.getElementById('themeToggle').querySelector('span').textContent = 'Light Theme';
+    }
+  }
+
+  function toggleDashboard() {
+    const panel = document.getElementById('controlPanel');
+    const btn = document.getElementById('dashboardToggle');
+    panel.classList.toggle('hidden');
+    btn.innerHTML = panel.classList.contains('hidden') ? '<i class="fas fa-chart-line"></i>' : '<i class="fas fa-arrow-left"></i>';
+    // Resize chart after panel toggle to fit new dimensions
+    setTimeout(() => {
+      if (workOrderChart) workOrderChart.resize();
+    }, 200);
+  }
+
+  function changeMapLayer(layer) {
+    if (mapLayers[currentMapLayer]) map.removeLayer(mapLayers[currentMapLayer]);
+    mapLayers[layer].addTo(map);
+    currentMapLayer = layer;
+    document.querySelectorAll('.layer-option').forEach(opt => opt.classList.remove('active'));
+    document.querySelector(`.layer-option[onclick*="${layer}"]`).classList.add('active');
+  }
+
+  function switchBottomTab(tab) {
+    document.getElementById('mapViewTab').classList.toggle('active', tab==='mapView');
+    document.getElementById('cityTourTab').classList.toggle('active', tab==='cityTour');
+    document.getElementById('mapViewContent').classList.toggle('active', tab==='mapView');
+    document.getElementById('cityTourContent').classList.toggle('active', tab==='cityTour');
+  }
+
+  // ===========================================
+  // START
+  // ===========================================
+  document.addEventListener('DOMContentLoaded', function() {
+    initMap();
+    loadThemePreference();
+    loadWorkOrdersCSV();
+  });
+</script>
+</body>
+</html>
